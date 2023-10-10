@@ -1,9 +1,15 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+
 import 'package:esc_pos_utils/esc_pos_utils.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
+import 'package:pos_printer/generated/assets.dart';
 
 void main() {
   runApp(const MyApp());
@@ -153,10 +159,14 @@ class _MyAppState extends State<MyApp> {
 
     // Xprinter XP-N160I
     final profile = await CapabilityProfile.load(name: 'XP-N160I');
+
+    final ByteData byteData = await rootBundle.load(Assets.imagesLogo);
+    final Uint8List list = byteData.buffer.asUint8List();
+    final img.Image image = img.Image.fromBytes(100, 100, list); // make a copy
     // PaperSize.mm80 or PaperSize.mm58
     final generator = Generator(PaperSize.mm80, profile);
     bytes += generator.setGlobalCodeTable('CP1252');
-    bytes += generator.text('Test Print', styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.image(image);
     bytes += generator.text('Product 1');
     bytes += generator.text('Product 2');
 
