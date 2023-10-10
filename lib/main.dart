@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
+import 'package:pos_printer/service.dart';
+import 'package:pos_printer_manager/pos_printer_manager.dart';
+import 'package:webcontent_converter/demo.dart';
+import 'package:webcontent_converter/webcontent_converter.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,45 +20,89 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'POS Printer'),
+      home: USBPrinterScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
+class USBPrinterScreen extends StatefulWidget {
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _USBPrinterScreenState createState() => _USBPrinterScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  late final profiles;
-
-  identify() async {
-    profiles = await CapabilityProfile.getAvailableProfiles();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-  }
+class _USBPrinterScreenState extends State<USBPrinterScreen> {
+  bool _isLoading = false;
+  List<USBPrinter> _printers = [];
+  USBPrinterManager? _manager;
+  List<int> _data = [];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: Text("USB Printer Screen"),
       ),
-      body: Center(child: Text(profiles.toString())),
+      body: ListView(
+        children: [
+          ..._printers
+              .map((printer) => ListTile(
+            title: Text("${printer.name}"),
+            subtitle: Text("${printer.address}"),
+            leading: Icon(Icons.usb),
+            onTap: () => _connect(printer),
+            onLongPress: () {
+              _startPrinter();
+            },
+            selected: printer.connected,
+          ))
+              .toList(),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => identify(),
-        tooltip: 'Identify',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+        child: _isLoading ? Icon(Icons.stop) : Icon(Icons.play_arrow),
+        onPressed: _isLoading ? null : _scan,
+      ),
     );
+  }
+
+  _scan() async {
+    setState(() {
+      _isLoading = true;
+      _printers = [];
+    });
+    var printers = await USBPrinterManager.discover();
+    setState(() {
+      _isLoading = false;
+      _printers = printers;
+    });
+  }
+
+  _connect(USBPrinter printer) async {
+    var paperSize = PaperSize.mm80;
+    var profile = await CapabilityProfile.load();
+    var manager = USBPrinterManager(printer, paperSize, profile);
+    await manager.connect();
+    setState(() {
+      _manager = manager;
+      printer.connected = true;
+    });
+  }
+
+  _startPrinter() async {
+    if (_data.isEmpty) {
+      final content = Demo.getShortReceiptContent();
+      var bytes = await WebcontentConverter.contentToImage(
+        content: content,
+        executablePath: WebViewHelper.executablePath(),
+      );
+      var service = ESCPrinterService(bytes);
+      var data = await service.getBytes();
+      if (mounted) setState(() => _data = data);
+    }
+
+    if (_manager != null) {
+      print("isConnected ${_manager!.isConnected}");
+      _manager!.writeBytes(_data, isDisconnect: false);
+    }
   }
 }
